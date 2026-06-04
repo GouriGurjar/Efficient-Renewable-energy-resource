@@ -839,13 +839,7 @@ def load_model():
     import os
 
     # Build list of directories to search
-    _dirs = [
-        # ── Hardcoded Streamlit Cloud paths for this repo ──
-        "/mount/src/Efficient-Renewable-energy-resource",
-        "/mount/src/Efficient-Renewable-energy-resource/models",
-        "/mount/src/efficient-renewable-energy-resource",
-        "/mount/src/efficient-renewable-energy-resource/models",
-    ]
+    _dirs = []
     try:
         _here = os.path.dirname(os.path.abspath(__file__))
         _dirs += [_here, os.path.join(_here, "models")]
@@ -955,6 +949,79 @@ def load_city_stats() -> dict:
             [406.2,405.8,405.1,404.6,403.8,403.2,403.0,403.3,403.9,404.5,405.2,405.9])},
     }
 
+
+# ══════════════════════════════════════════════════════════════════════
+# AUTO-TRAIN: If model files missing, train fresh on Streamlit Cloud
+# ══════════════════════════════════════════════════════════════════════
+def _auto_train_if_needed():
+    import os, pickle, joblib, numpy as np, pandas as pd
+    from sklearn.ensemble import GradientBoostingRegressor
+    from sklearn.multioutput import MultiOutputRegressor
+    from sklearn.preprocessing import StandardScaler
+    from pathlib import Path
+
+    # Check if model already exists
+    _save_dir = os.path.dirname(os.path.abspath(__file__))
+    _m = os.path.join(_save_dir, "model.joblib")
+    _s = os.path.join(_save_dir, "scaler.joblib")
+    _f = os.path.join(_save_dir, "model_features.pkl")
+    if os.path.isfile(_m) and os.path.isfile(_s) and os.path.isfile(_f):
+        return  # already exists, skip
+
+    # Find the CSV
+    _csv = None
+    for _p in [
+        os.path.join(_save_dir, "renewable_energy_data.csv"),
+        os.path.join(_save_dir, "data", "renewable_energy_data.csv"),
+    ]:
+        if os.path.isfile(_p):
+            _csv = _p
+            break
+    if _csv is None:
+        return  # no data, can't train
+
+    with st.spinner("⚙️ Training ML model for first time — please wait ~60s..."):
+        df = pd.read_csv(_csv, parse_dates=["Datetime"])
+
+        # Feature engineering
+        if "Hour_sin" not in df.columns:
+            df["Hour_sin"]        = np.sin(2*np.pi*df["Hour"]/24)
+            df["Hour_cos"]        = np.cos(2*np.pi*df["Hour"]/24)
+            df["Month_sin"]       = np.sin(2*np.pi*df["Month"]/12)
+            df["Month_cos"]       = np.cos(2*np.pi*df["Month"]/12)
+            df["DoY_sin"]         = np.sin(2*np.pi*df["Day_of_Year"]/365)
+            df["DoY_cos"]         = np.cos(2*np.pi*df["Day_of_Year"]/365)
+            df["Wind_cubed"]      = df["Wind_Speed"]**3
+            df["Irr_temp_eff"]    = df["Solar_Irradiance"]*(1-0.004*np.maximum(0, df["Temperature"]-25))
+            df["Humidity_precip"] = df["Humidity"]*df["Precipitation"]
+
+        FEATURE_COLS = [
+            "Hour","Day","Month","Day_of_Week","Day_of_Year","Season",
+            "Temperature","Solar_Irradiance","Wind_Speed","Humidity",
+            "Precipitation","Pressure",
+            "Hour_sin","Hour_cos","Month_sin","Month_cos","DoY_sin","DoY_cos",
+            "Wind_cubed","Irr_temp_eff","Humidity_precip",
+        ]
+
+        split = int(len(df)*0.8)
+        X_train = df.iloc[:split][FEATURE_COLS]
+        y_train = df.iloc[:split]["Total_Energy"]
+
+        scaler_new = StandardScaler()
+        X_sc = scaler_new.fit_transform(X_train)
+
+        model_new = GradientBoostingRegressor(
+            n_estimators=200, max_depth=5,
+            learning_rate=0.08, subsample=0.8, random_state=42
+        )
+        model_new.fit(X_sc, y_train)
+
+        joblib.dump(model_new,  _m)
+        joblib.dump(scaler_new, _s)
+        with open(_f, "wb") as fh:
+            pickle.dump(FEATURE_COLS, fh)
+
+_auto_train_if_needed()
 
 # ── Global data & model objects ──
 df_raw               = load_data()

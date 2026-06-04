@@ -839,7 +839,13 @@ def load_model():
     import os
 
     # Build list of directories to search
-    _dirs = []
+    _dirs = [
+        # ── Hardcoded Streamlit Cloud paths for this repo ──
+        "/mount/src/Efficient-Renewable-energy-resource",
+        "/mount/src/Efficient-Renewable-energy-resource/models",
+        "/mount/src/efficient-renewable-energy-resource",
+        "/mount/src/efficient-renewable-energy-resource/models",
+    ]
     try:
         _here = os.path.dirname(os.path.abspath(__file__))
         _dirs += [_here, os.path.join(_here, "models")]

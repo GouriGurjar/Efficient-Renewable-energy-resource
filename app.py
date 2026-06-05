@@ -3004,7 +3004,9 @@ elif page == "📊  Analytics":
 
 
     # ── Filters ──
-    with st.expander("⚙️ Data Filters", expanded=False):
+    st.markdown("#### Filters")
+    _fexp = st.container(border=True)
+    with _fexp:
         fc1, fc2, fc3 = st.columns(3)
         sel_months = fc1.multiselect("Months", list(range(1,13)), default=list(range(1,13)),
                                      format_func=lambda x: MONTH_NAMES[x-1])
